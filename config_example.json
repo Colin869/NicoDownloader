@@ -1,0 +1,8 @@
+{
+  "download_path": "C:\\Users\\YourUsername\\Downloads",
+  "quality": "best",
+  "last_updated": "2024-01-01T00:00:00",
+  "max_retries": 3,
+  "auto_retry": true,
+  "download_history_size": 100
+}
