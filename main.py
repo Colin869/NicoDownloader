@@ -228,13 +228,13 @@ class NicoNicoDownloader:
         self.save_download_history()
     
     def check_ytdlp(self):
+        """Check if yt-dlp is available (non-blocking)"""
         try:
-            result = subprocess.run([sys.executable, "-m", "yt_dlp", "--version"], 
-                                 capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                self.log_message(f"yt-dlp version: {result.stdout.strip()}")
-            else:
-                self.log_message("Warning: yt-dlp not properly installed")
+            # Try to import yt_dlp first (faster and safer)
+            import yt_dlp
+            self.log_message(f"yt-dlp version: {yt_dlp.version.__version__}")
+        except ImportError:
+            self.log_message("Warning: yt-dlp not properly installed")
         except Exception as e:
             self.log_message(f"Error checking yt-dlp: {str(e)}")
     
@@ -289,27 +289,37 @@ class NicoNicoDownloader:
     def get_video_info(self, url):
         """Get video information using yt-dlp"""
         try:
+            # Use a more robust approach with shorter timeout
             cmd = [
                 sys.executable, "-m", "yt_dlp",
                 "--dump-json",
                 "--no-playlist",
+                "--no-warnings",
                 url
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Use a shorter timeout to prevent hanging
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
-                video_info = json.loads(result.stdout)
-                return {
-                    "title": video_info.get("title", "Unknown Title"),
-                    "duration": video_info.get("duration", 0),
-                    "uploader": video_info.get("uploader", "Unknown"),
-                    "view_count": video_info.get("view_count", 0),
-                    "upload_date": video_info.get("upload_date", ""),
-                    "formats": video_info.get("formats", [])
-                }
+                try:
+                    video_info = json.loads(result.stdout)
+                    return {
+                        "title": video_info.get("title", "Unknown Title"),
+                        "duration": video_info.get("duration", 0),
+                        "uploader": video_info.get("uploader", "Unknown"),
+                        "view_count": video_info.get("view_count", 0),
+                        "upload_date": video_info.get("upload_date", ""),
+                        "formats": video_info.get("formats", [])
+                    }
+                except json.JSONDecodeError:
+                    self.log_message("Error parsing video info response")
+                    return None
             else:
                 self.log_message(f"Error getting video info: {result.stderr}")
                 return None
+        except subprocess.TimeoutExpired:
+            self.log_message("Timeout getting video info - proceeding without preview")
+            return None
         except Exception as e:
             self.log_message(f"Error getting video info: {str(e)}")
             return None
@@ -320,16 +330,20 @@ class NicoNicoDownloader:
             messagebox.showerror("Error", "Please enter a video URL")
             return
         
-        # Get video info first
+        # Get video info first (optional)
         self.status_var.set("Getting video information...")
         self.progress_bar.set(0.1)
         
         video_info = self.get_video_info(url)
-        if not video_info:
-            messagebox.showerror("Error", "Could not get video information. Please check the URL.")
-            self.status_var.set("Ready to download")
-            self.progress_bar.set(0)
-            return
+        if video_info:
+            self.log_message(f"Video: {video_info['title']} by {video_info['uploader']}")
+        else:
+            self.log_message("Proceeding without video preview...")
+            # Create a minimal video_info structure so the app can continue
+            video_info = {
+                "title": "Unknown Title",
+                "uploader": "Unknown"
+            }
         
         # Validate URL
         is_valid, result = self.validate_url(url)
@@ -362,7 +376,8 @@ class NicoNicoDownloader:
         }
         
         self.download_queue.append(download_item)
-        self.log_message(f"Added to queue: {video_info['title']}")
+        title = video_info.get('title', 'Unknown Title') if video_info else 'Unknown Title'
+        self.log_message(f"Added to queue: {title}")
         
         # Start download if no other download is running
         if not self.current_download:
@@ -400,14 +415,16 @@ class NicoNicoDownloader:
         
         if download_item["retry_count"] <= 3:
             self.download_queue.insert(0, download_item)
-            self.log_message(f"Retrying download: {download_item['video_info']['title']}")
+            title = download_item.get('video_info', {}).get('title', 'Unknown Title')
+            self.log_message(f"Retrying download: {title}")
             if not self.current_download:
                 self.process_download_queue()
         else:
-            self.log_message(f"Max retries reached for: {download_item['video_info']['title']}")
+            title = download_item.get('video_info', {}).get('title', 'Unknown Title')
+            self.log_message(f"Max retries reached for: {title}")
             self.add_to_history(
                 download_item["video_id"],
-                download_item["video_info"]["title"],
+                title,
                 "failed",
                 download_item["download_path"]
             )
@@ -421,7 +438,8 @@ class NicoNicoDownloader:
             video_info = download_item["video_info"]
             
             self.status_var.set("Downloading video...")
-            self.log_message(f"Starting download for: {video_info['title']}")
+            title = video_info.get('title', 'Unknown Title') if video_info else 'Unknown Title'
+            self.log_message(f"Starting download for: {title}")
             self.log_message(f"Video ID: {video_id}")
             self.log_message(f"Download path: {download_path}")
             
@@ -467,21 +485,21 @@ class NicoNicoDownloader:
             
             if self.download_cancelled:
                 self.status_var.set("Download cancelled")
-                self.add_to_history(video_id, video_info['title'], "cancelled", download_path)
+                self.add_to_history(video_id, title, "cancelled", download_path)
             elif process.returncode == 0:
                 self.status_var.set("Download completed successfully!")
                 self.progress_bar.set(1.0)
                 self.log_message("Download completed successfully!")
-                self.add_to_history(video_id, video_info['title'], "completed", download_path)
-                messagebox.showinfo("Success", f"Video '{video_info['title']}' downloaded successfully!")
+                self.add_to_history(video_id, title, "completed", download_path)
+                messagebox.showinfo("Success", f"Video '{title}' downloaded successfully!")
             else:
                 self.status_var.set("Download failed")
                 self.log_message("Download failed!")
-                self.add_to_history(video_id, video_info['title'], "failed", download_path)
+                self.add_to_history(video_id, title, "failed", download_path)
                 
                 # Offer retry option
                 if messagebox.askyesno("Download Failed", 
-                                     f"Download failed for '{video_info['title']}'. Would you like to retry?"):
+                                     f"Download failed for '{title}'. Would you like to retry?"):
                     self.retry_download(download_item)
                 else:
                     messagebox.showerror("Error", "Download failed. Check the log for details.")
@@ -489,7 +507,7 @@ class NicoNicoDownloader:
         except Exception as e:
             self.status_var.set("Download error")
             self.log_message(f"Error during download: {str(e)}")
-            self.add_to_history(video_id, video_info['title'], "error", download_path)
+            self.add_to_history(video_id, title, "error", download_path)
             messagebox.showerror("Error", f"Download error: {str(e)}")
         
         finally:
