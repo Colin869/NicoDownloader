@@ -19,7 +19,7 @@ class NicoNicoDownloader:
         
         # Create main window
         self.root = ctk.CTk()
-        self.root.title("NicoNico Video Downloader")
+        self.root.title("NicoNico Video Downloader - FIXED")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -54,7 +54,7 @@ class NicoNicoDownloader:
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
-        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader", 
+        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - FIXED", 
                                   font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack(pady=(20, 30))
         
@@ -150,7 +150,11 @@ class NicoNicoDownloader:
         
         history_btn = ctk.CTkButton(log_header_frame, text="Show History", 
                                   command=self.show_download_history, width=100, height=25)
-        history_btn.pack(side="right")
+        history_btn.pack(side="right", padx=(10, 0))
+        
+        test_btn = ctk.CTkButton(log_header_frame, text="Test Download", 
+                                command=self.test_download, width=100, height=25)
+        test_btn.pack(side="right", padx=(10, 0))
         
         # Create text widget with scrollbar
         text_frame = ctk.CTkFrame(log_frame)
@@ -162,6 +166,13 @@ class NicoNicoDownloader:
         scrollbar = ctk.CTkScrollbar(text_frame, command=self.log_text.yview)
         scrollbar.pack(side="right", fill="y")
         self.log_text.configure(yscrollcommand=scrollbar.set)
+    
+    def test_download(self):
+        """Test download functionality with a sample URL"""
+        test_url = "https://www.nicovideo.jp/watch/sm9"
+        self.url_var.set(test_url)
+        self.log_message("Testing download with sample URL: sm9")
+        self.log_message("Click 'Download Video' to test")
     
     def browse_folder(self):
         folder = filedialog.askdirectory(initialdir=self.download_path.get())
@@ -228,15 +239,33 @@ class NicoNicoDownloader:
         self.save_download_history()
     
     def check_ytdlp(self):
-        """Check if yt-dlp is available (non-blocking)"""
+        """Check if yt-dlp is available"""
         try:
-            # Try to import yt_dlp first (faster and safer)
             import yt_dlp
-            self.log_message(f"yt-dlp version: {yt_dlp.version.__version__}")
+            self.log_message(f"✓ yt-dlp version: {yt_dlp.version.__version__}")
+            return True
         except ImportError:
-            self.log_message("Warning: yt-dlp not properly installed")
+            self.log_message("❌ yt-dlp not installed. Installing...")
+            self.install_ytdlp()
+            return False
         except Exception as e:
             self.log_message(f"Error checking yt-dlp: {str(e)}")
+            return False
+    
+    def install_ytdlp(self):
+        """Install yt-dlp if not available"""
+        try:
+            self.log_message("Installing yt-dlp...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "yt-dlp"], 
+                         capture_output=True, text=True, check=True)
+            self.log_message("✓ yt-dlp installed successfully!")
+            return True
+        except subprocess.CalledProcessError as e:
+            self.log_message(f"❌ Failed to install yt-dlp: {e.stderr}")
+            return False
+        except Exception as e:
+            self.log_message(f"❌ Error installing yt-dlp: {str(e)}")
+            return False
     
     def log_message(self, message):
         self.log_text.insert("end", f"{message}\n")
@@ -289,17 +318,19 @@ class NicoNicoDownloader:
     def get_video_info(self, url):
         """Get video information using yt-dlp"""
         try:
-            # Use a more robust approach with shorter timeout
+            # Use NicoNico-specific options
             cmd = [
                 sys.executable, "-m", "yt_dlp",
                 "--dump-json",
                 "--no-playlist",
                 "--no-warnings",
+                "--extractor-args", "niconico:legacy_encoding=utf-8",
+                "--cookies-from-browser", "chrome",
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 url
             ]
             
-            # Use a shorter timeout to prevent hanging
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
             if result.returncode == 0:
                 try:
                     video_info = json.loads(result.stdout)
@@ -330,7 +361,7 @@ class NicoNicoDownloader:
             messagebox.showerror("Error", "Please enter a video URL")
             return
         
-        # Get video info first (optional)
+        # Get video info first
         self.status_var.set("Getting video information...")
         self.progress_bar.set(0.1)
         
@@ -339,7 +370,6 @@ class NicoNicoDownloader:
             self.log_message(f"Video: {video_info['title']} by {video_info['uploader']}")
         else:
             self.log_message("Proceeding without video preview...")
-            # Create a minimal video_info structure so the app can continue
             video_info = {
                 "title": "Unknown Title",
                 "uploader": "Unknown"
@@ -430,7 +460,7 @@ class NicoNicoDownloader:
             )
     
     def download_video(self, download_item):
-        """Download video with improved progress tracking and error handling"""
+        """Download video with improved NicoNico support"""
         try:
             url = download_item["url"]
             video_id = download_item["video_id"]
@@ -446,16 +476,26 @@ class NicoNicoDownloader:
             # Reset cancellation flag
             self.download_cancelled = False
             
-            # Build yt-dlp command with better options
+            # Build yt-dlp command with NicoNico-specific options
+            quality = self.quality_var.get()
+            format_spec = "best[height<=720]" if quality == "720p" else \
+                         "best[height<=480]" if quality == "480p" else \
+                         "best[height<=360]" if quality == "360p" else \
+                         "best" if quality == "best" else "worst"
+            
             cmd = [
                 sys.executable, "-m", "yt_dlp",
-                "--format", f"best[height<={self.quality_var.get()}]" if self.quality_var.get() in ["720p", "480p", "360p"] else self.quality_var.get(),
+                "--format", format_spec,
                 "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
                 "--write-description",
                 "--write-thumbnail",
                 "--add-metadata",
                 "--newline",
                 "--progress",
+                "--no-warnings",
+                "--extractor-args", "niconico:legacy_encoding=utf-8",
+                "--cookies-from-browser", "chrome",
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 url
             ]
             
@@ -465,7 +505,7 @@ class NicoNicoDownloader:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      universal_newlines=True, bufsize=1)
             
-            # Monitor progress with better parsing
+            # Monitor progress
             start_time = time.time()
             for line in process.stdout:
                 if self.download_cancelled:
@@ -476,8 +516,6 @@ class NicoNicoDownloader:
                 if line:
                     line = line.strip()
                     self.log_message(line)
-                    
-                    # Update progress based on various patterns
                     self.update_progress_from_line(line, start_time)
             
             # Wait for process to complete
@@ -495,7 +533,12 @@ class NicoNicoDownloader:
             else:
                 self.status_var.set("Download failed")
                 self.log_message("Download failed!")
+                self.log_message(f"Return code: {process.returncode}")
                 self.add_to_history(video_id, title, "failed", download_path)
+                
+                # Try alternative download method
+                if self.try_alternative_download(download_item):
+                    return
                 
                 # Offer retry option
                 if messagebox.askyesno("Download Failed", 
@@ -521,6 +564,52 @@ class NicoNicoDownloader:
                 self.process_download_queue()
             else:
                 self.status_var.set("Ready to download")
+    
+    def try_alternative_download(self, download_item):
+        """Try alternative download method if primary method fails"""
+        try:
+            url = download_item["url"]
+            video_id = download_item["video_id"]
+            download_path = download_item["download_path"]
+            video_info = download_item["video_info"]
+            title = video_info.get('title', 'Unknown Title') if video_info else 'Unknown Title'
+            
+            self.log_message("Trying alternative download method...")
+            self.status_var.set("Trying alternative method...")
+            
+            # Alternative command with different options
+            quality = self.quality_var.get()
+            format_spec = "best" if quality in ["best", "720p", "480p", "360p"] else "worst"
+            
+            alt_cmd = [
+                sys.executable, "-m", "yt_dlp",
+                "--format", format_spec,
+                "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
+                "--no-warnings",
+                "--extractor-args", "niconico:legacy_encoding=utf-8",
+                "--cookies-from-browser", "firefox",
+                url
+            ]
+            
+            self.log_message(f"Alternative command: {' '.join(alt_cmd)}")
+            
+            # Run alternative command
+            process = subprocess.run(alt_cmd, capture_output=True, text=True, timeout=300)
+            
+            if process.returncode == 0:
+                self.status_var.set("Alternative download successful!")
+                self.progress_bar.set(1.0)
+                self.log_message("Alternative download completed successfully!")
+                self.add_to_history(video_id, title, "completed", download_path)
+                messagebox.showinfo("Success", f"Video '{title}' downloaded using alternative method!")
+                return True
+            else:
+                self.log_message(f"Alternative method also failed: {process.stderr}")
+                return False
+                
+        except Exception as e:
+            self.log_message(f"Error in alternative download: {str(e)}")
+            return False
     
     def update_progress_from_line(self, line, start_time):
         """Update progress bar based on yt-dlp output"""
