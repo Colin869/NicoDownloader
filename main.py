@@ -19,7 +19,7 @@ class NicoNicoDownloader:
         
         # Create main window
         self.root = ctk.CTk()
-        self.root.title("NicoNico Video Downloader - FIXED")
+        self.root.title("NicoNico Video Downloader - WORKING")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -54,7 +54,7 @@ class NicoNicoDownloader:
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
-        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - FIXED", 
+        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - WORKING", 
                                   font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack(pady=(20, 30))
         
@@ -318,6 +318,8 @@ class NicoNicoDownloader:
     def get_video_info(self, url):
         """Get video information using yt-dlp"""
         try:
+            self.log_message("Getting video information...")
+            
             # Use NicoNico-specific options
             cmd = [
                 sys.executable, "-m", "yt_dlp",
@@ -325,15 +327,17 @@ class NicoNicoDownloader:
                 "--no-playlist",
                 "--no-warnings",
                 "--extractor-args", "niconico:legacy_encoding=utf-8",
-                "--cookies-from-browser", "chrome",
-                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 url
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            self.log_message(f"Running command: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
             if result.returncode == 0:
                 try:
                     video_info = json.loads(result.stdout)
+                    self.log_message(f"Successfully parsed video info for: {video_info.get('title', 'Unknown')}")
                     return {
                         "title": video_info.get("title", "Unknown Title"),
                         "duration": video_info.get("duration", 0),
@@ -342,12 +346,15 @@ class NicoNicoDownloader:
                         "upload_date": video_info.get("upload_date", ""),
                         "formats": video_info.get("formats", [])
                     }
-                except json.JSONDecodeError:
-                    self.log_message("Error parsing video info response")
+                except json.JSONDecodeError as e:
+                    self.log_message(f"Error parsing video info response: {str(e)}")
+                    self.log_message(f"Raw output: {result.stdout[:200]}...")
                     return None
             else:
                 self.log_message(f"Error getting video info: {result.stderr}")
+                self.log_message(f"Return code: {result.returncode}")
                 return None
+                
         except subprocess.TimeoutExpired:
             self.log_message("Timeout getting video info - proceeding without preview")
             return None
@@ -494,8 +501,6 @@ class NicoNicoDownloader:
                 "--progress",
                 "--no-warnings",
                 "--extractor-args", "niconico:legacy_encoding=utf-8",
-                "--cookies-from-browser", "chrome",
-                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 url
             ]
             
@@ -587,7 +592,6 @@ class NicoNicoDownloader:
                 "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
                 "--no-warnings",
                 "--extractor-args", "niconico:legacy_encoding=utf-8",
-                "--cookies-from-browser", "firefox",
                 url
             ]
             
