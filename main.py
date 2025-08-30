@@ -19,7 +19,7 @@ class NicoNicoDownloader:
         
         # Create main window
         self.root = ctk.CTk()
-        self.root.title("NicoNico Video Downloader - FINAL FIX")
+        self.root.title("NicoNico Video Downloader - WORKING FINAL")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -54,7 +54,7 @@ class NicoNicoDownloader:
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
-        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - FINAL FIX", 
+        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - WORKING FINAL", 
                                   font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack(pady=(20, 30))
         
@@ -483,15 +483,9 @@ class NicoNicoDownloader:
             # Reset cancellation flag
             self.download_cancelled = False
             
-            # For NicoNico, use simpler format selection since they have limited options
-            quality = self.quality_var.get()
-            if quality == "best":
-                format_spec = "best"  # Let yt-dlp choose the best available
-            elif quality == "worst":
-                format_spec = "worst"
-            else:
-                # For specific quality settings, use best available within that range
-                format_spec = "best"
+            # For NicoNico, use the specific format combination that works
+            # This combines the best video and audio formats available
+            format_spec = "video-h264-360p+audio-aac-64kbps"
             
             cmd = [
                 sys.executable, "-m", "yt_dlp",
@@ -586,10 +580,10 @@ class NicoNicoDownloader:
             self.log_message("Trying alternative download method...")
             self.status_var.set("Trying alternative method...")
             
-            # Alternative command with different options - use best available format
+            # Alternative command with different options
             alt_cmd = [
                 sys.executable, "-m", "yt_dlp",
-                "--format", "best",  # Just get the best available
+                "--format", "best",  # Try best format as fallback
                 "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
                 "--no-warnings",
                 "--extractor-args", "niconico:legacy_encoding=utf-8",
