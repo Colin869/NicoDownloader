@@ -19,7 +19,7 @@ class NicoNicoDownloader:
         
         # Create main window
         self.root = ctk.CTk()
-        self.root.title("NicoNico Video Downloader - WORKING FINAL")
+        self.root.title("NicoNico Video Downloader - UNIVERSAL")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -54,7 +54,7 @@ class NicoNicoDownloader:
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
-        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - WORKING FINAL", 
+        title_label = ctk.CTkLabel(main_frame, text="NicoNico Video Downloader - UNIVERSAL", 
                                   font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack(pady=(20, 30))
         
@@ -467,7 +467,7 @@ class NicoNicoDownloader:
             )
     
     def download_video(self, download_item):
-        """Download video with improved NicoNico support"""
+        """Download video with universal format support for all NicoNico video types"""
         try:
             url = download_item["url"]
             video_id = download_item["video_id"]
@@ -483,9 +483,24 @@ class NicoNicoDownloader:
             # Reset cancellation flag
             self.download_cancelled = False
             
-            # For NicoNico, use the specific format combination that works
-            # This combines the best video and audio formats available
-            format_spec = "video-h264-360p+audio-aac-64kbps"
+            # Use intelligent format selection that works with all NicoNico video types
+            quality = self.quality_var.get()
+            
+            # Smart format selection based on quality preference
+            if quality == "best":
+                format_spec = "bestvideo+bestaudio/best"  # Best video + best audio, fallback to best
+            elif quality == "worst":
+                format_spec = "worst"  # Lowest quality (often most compatible)
+            elif quality == "720p":
+                format_spec = "best[height<=720]/best"  # Best up to 720p, fallback to best
+            elif quality == "480p":
+                format_spec = "best[height<=480]/best"  # Best up to 480p, fallback to best
+            elif quality == "360p":
+                format_spec = "best[height<=360]/best"  # Best up to 360p, fallback to best
+            else:
+                format_spec = "best"  # Default fallback
+            
+            self.log_message(f"Selected format: {format_spec}")
             
             cmd = [
                 sys.executable, "-m", "yt_dlp",
@@ -580,33 +595,49 @@ class NicoNicoDownloader:
             self.log_message("Trying alternative download method...")
             self.status_var.set("Trying alternative method...")
             
-            # Alternative command with different options
-            alt_cmd = [
-                sys.executable, "-m", "yt_dlp",
-                "--format", "best",  # Try best format as fallback
-                "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
-                "--no-warnings",
-                "--extractor-args", "niconico:legacy_encoding=utf-8",
-                "--merge-output-format", "mp4",
-                url
+            # Try multiple alternative approaches for maximum compatibility
+            alternative_methods = [
+                "best",                      # Best overall quality
+                "worst",                     # Lowest quality (often more compatible)
+                "bestvideo+bestaudio",       # Separate best video and audio
+                "best[ext=mp4]/best",       # Prefer MP4 format
+                "best[height<=480]/best"    # Lower resolution fallback
             ]
             
-            self.log_message(f"Alternative command: {' '.join(alt_cmd)}")
-            
-            # Run alternative command
-            process = subprocess.run(alt_cmd, capture_output=True, text=True, timeout=300)
-            
-            if process.returncode == 0:
-                self.status_var.set("Alternative download successful!")
-                self.progress_bar.set(1.0)
-                self.log_message("Alternative download completed successfully!")
-                self.add_to_history(video_id, title, "completed", download_path)
-                messagebox.showinfo("Success", f"Video '{title}' downloaded using alternative method!")
-                return True
-            else:
-                self.log_message(f"Alternative method also failed: {process.stderr}")
-                return False
+            for i, format_spec in enumerate(alternative_methods):
+                self.log_message(f"Trying alternative method {i+1}: {format_spec}")
                 
+                alt_cmd = [
+                    sys.executable, "-m", "yt_dlp",
+                    "--format", format_spec,
+                    "--output", os.path.join(download_path, f"%(title)s.%(ext)s"),
+                    "--no-warnings",
+                    "--extractor-args", "niconico:legacy_encoding=utf-8",
+                    "--merge-output-format", "mp4",
+                    url
+                ]
+                
+                self.log_message(f"Alternative command {i+1}: {' '.join(alt_cmd)}")
+                
+                # Run alternative command
+                process = subprocess.run(alt_cmd, capture_output=True, text=True, timeout=300)
+                
+                if process.returncode == 0:
+                    self.status_var.set(f"Alternative method {i+1} successful!")
+                    self.progress_bar.set(1.0)
+                    self.log_message(f"Alternative method {i+1} completed successfully!")
+                    self.add_to_history(video_id, title, "completed", download_path)
+                    messagebox.showinfo("Success", f"Video '{title}' downloaded using alternative method {i+1}!")
+                    return True
+                else:
+                    self.log_message(f"Alternative method {i+1} failed: {process.stderr}")
+                    if i < len(alternative_methods) - 1:  # Not the last method
+                        self.log_message("Trying next alternative method...")
+                        continue
+                    else:
+                        self.log_message("All alternative methods failed")
+                        return False
+                        
         except Exception as e:
             self.log_message(f"Error in alternative download: {str(e)}")
             return False
